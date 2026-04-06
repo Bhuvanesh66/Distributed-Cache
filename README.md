@@ -1,180 +1,396 @@
-# Distributed Cache
+# Distributed In-Memory Cache System
 
-A Java-based low-level design project that simulates a distributed in-memory caching system. The system demonstrates how cache clusters operate by distributing data across nodes, handling cache misses via a backing database, and implementing production-like caching strategies such as LRU eviction, TTL expiration, and asynchronous prefetching.
+A Java-based system design project implementing a scalable distributed caching mechanism. This implementation demonstrates multi-node cache cluster operations, cache miss resolution through a persistence layer, and industry-standard optimization techniques including LRU memory management, time-based expiration, and intelligent data prefetching.
 
-This project is intended as a learning-oriented system design implementation, showcasing how modular cache components can be composed and coordinated.
-
----
-
-## Overview
-
-The system models a distributed cache with the following characteristics:
-
-- Horizontal scalability via multiple cache nodes
-- Pluggable strategies for distribution, eviction, TTL, and prefetching
-- Fault-tolerant data routing using a load balancer
-- Dynamic rebalancing when nodes are added or removed
-
-It is not a production-ready cache, but a conceptual and extensible simulation of one.
+This project serves as an educational resource for understanding distributed systems architecture, highlighting how independent cache components integrate seamlessly through well-defined interfaces.
 
 ---
 
-## Architecture
+## System Characteristics
 
-### High-Level Flow
-1. A client requests data via Cache.get(key)
-2. The LoadBalancer selects the appropriate node using a DistributionPolicy
-3. The system checks if the key exists in the selected CacheNode:
-    - Hit → Return cached value
-    - Miss → Fetch from Database, store in node, then return
-4. After access, a PreFetchingPolicy asynchronously loads related keys
-5. Each node enforces:
-    - Capacity constraints via EvictionPolicy
-    - Expiry via TTLPolicy
-6. On topology changes:
-    - LoadBalancer updates shard mapping
-    - Redistributor migrates keys to correct nodes
+The cache infrastructure supports:
+
+- Linear growth through additional cache nodes
+- Interchangeable implementations for routing, memory management, expiration, and prediction
+- Reliable request handling with intelligent node selection
+- Automatic cluster rebalancing on topology modifications
+
+Please note: This is an educational architecture demonstrating design patterns, not production-grade software.
 
 ---
 
-## Default Configuration
+## System Design
 
-The demo setup uses:
+### Request Processing Pipeline
 
-| Component | Strategy |
-|-----------|------------------------------|
-| Distribution |	Modulo-based hashing |
-| Eviction |	LRU (Least Recently Used) |
-| TTL |	Active expiration |
-| Prefetching |	Simple range-based prediction |
-| Database |	In-memory with artificial delay |
+1. Client initiates data retrieval through Cache.get(key)
+2. LoadBalancer determines destination node via DistributionPolicy
+3. Target CacheNode is queried for requested key:
+   - Found → Serve cached result immediately
+   - Missing → Query Database, persist to node, return result
+4. PerFetchingPolicy triggers asynchronous retrieval of anticipated keys
+5. Node-level enforcement mechanisms:
+   - Storage utilization controlled by EvictionPolicy
+   - Temporal validity managed by TTLPolicy
+6. During cluster configuration adjustments:
+   - LoadBalancer recalculates shard distribution
+   - Redistributor transfers keys to correct locations
 
 ---
 
-## Key Components
+## Standard Deployment Settings
 
-### Core
-- Cache
+Current implementation leverages:
 
-    Entry point for all operations. Coordinates node access, database fallback, and prefetching.
+| Module               | Implementation                               |
+| -------------------- | -------------------------------------------- |
+| Key Distribution     | Modular arithmetic-based sharding            |
+| Space Management     | Least-Recently-Used removal protocol         |
+| Lifetime Enforcement | Scheduled background cleanup                 |
+| Intelligent Loading  | Proximity-based key prediction               |
+| Storage Backend      | In-process repository with synthetic latency |
 
-- CacheNode
+---
 
-    Represents an individual cache shard with local storage and policies.
-- LoadBalancer
+## Primary Building Blocks
 
-    Routes keys to nodes using a distribution strategy.
-- Redistributor
+### Primary Services
 
-    Handles data movement during node addition/removal.
+- **Cache**
 
-### Strategies (Pluggable Design)
-- DistributionPolicy
+  Orchestrates all cache interactions, manages node selection, handles database queries, triggers background data preparation.
 
-    Determines how keys are mapped to nodes
-    (e.g., modulo hashing)
+- **CacheNode**
 
-- EvictionPolicy
+  Encapsulates a distributed cache segment with attached management strategies and local data structures.
 
-    Manages memory constraints
-    (e.g., LRU eviction)
+- **LoadBalancer**
 
-- TTLPolicy
+  Implements intelligent key distribution, directs requests to assigned nodes using configured algorithms.
 
-    Controls expiration of cache entries
+- **Redistributor**
 
-- PreFetchingPolicy
+  Manages data migrations during cluster topology transitions.
 
-    Predicts and loads related keys asynchronously
+### Policy Interfaces (Extensible Implementations)
 
-### Supporting Components
-- Database
+- **DistributionPolicy**
 
-    Simulated backing store with artificial latency to highlight cache benefits
+  Specifies algorithm for key-to-node allocation
+  (e.g., hash-based modulo arithmetic)
 
-- Factories
+- **EvictionPolicy**
 
-    - CacheFactory
-    - CacheNodeFactory
+  Enforces storage boundaries through data removal
+  (e.g., temporal recency tracking)
 
-    Used to assemble system components without hardcoding implementations
+- **TTLPolicy**
 
-- Models
+  Manages cache entry lifecycle and removal timing
 
-    Encapsulate key/value abstractions and cache metadata
-- Observer
-    - CacheStateObserver
-    Enables monitoring of cache behavior
+- **PreFetchingPolicy**
+
+  Implements predictive loading of correlated data
+
+### Secondary Services
+
+- **Database**
+
+  Persistent data source with engineered access delays to simulate real scenarios
+
+- **Component Builders**
+  - CacheFactory
+  - CacheNodeFactory
+
+  Enable flexible construction of system architecture without tight coupling
+
+- **Data Models**
+
+  Abstract key and value representations with associated metadata
+
+- **Event System**
+  - CacheStateObserver
+  Provides extensibility hooks for state monitoring and reactions
 
 ---
 
 ## Low-Level Design (UML)
 
-![Distributed Cache UML](https://lh3.googleusercontent.com/d/12LvGqZIOhTozumbmDtq6MBhbZW11pS4F)
+```mermaid
+classDiagram
+    class Cache {
+        -LoadBalancer loadBalancer
+        -PreFetchingPolicy preFetchingPolicy
+        -ExecutorService threadPool
+        -Database backingStore
+        +get(Key): Value
+        +delete(Key): void
+        +addCacheNodes(List~CacheNode~): void
+        +removeCacheNode(NodeKey): void
+        +shutdown(): void
+    }
+
+    class LoadBalancer {
+        -ConcurrentHashMap~NodeKey,CacheNode~ nodeRegistry
+        -CopyOnWriteArrayList~NodeKey~ activeNodeList
+        -DistributionPolicy routingStrategy
+        -ReadWriteLock accessLock
+        +get(Key): Value
+        +put(Key, Value): void
+        +delete(Key): void
+        +addNodes(List~CacheNode~): void
+        +removeNode(NodeKey): void
+        -resolveNodeForKey(Key): CacheNode
+    }
+
+    class CacheNode {
+        -Map~Key,CacheValue~ storage
+        -EvictionPolicy evictionStrategy
+        -TTLPolicy expirationStrategy
+        -int maxCapacity
+        +get(Key): Value
+        +put(Key, Value): void
+        +deleteKey(Key): void
+        +getKeys(): List~Key~
+    }
+
+    class Redistributor {
+        +redistribute(LoadBalancer): void
+    }
+
+    class Database {
+        -Map~Key,Value~ storage
+        +get(Key): Value
+    }
+
+    class CacheValue {
+        -Value storedValue
+        -long timestamp
+        -long lastAccessTime
+        +getValue(): Value
+        +getCreatedAt(): long
+        +getLastAccessedAt(): long
+        +getAge(): long
+    }
+
+    class CacheFactory {
+        +createCache(String, String, Database): Cache
+        -buildPreFetcher(String): PreFetchingPolicy
+        -buildDistributor(String): DistributionPolicy
+    }
+
+    class CacheNodeFactory {
+        -String evictionMethod
+        -String expirationMethod
+        -int nodeSize
+        -long ttlMs
+        +createNodes(int): List~CacheNode~
+        -buildEvictioner(String): EvictionPolicy
+        -buildExpirer(String): TTLPolicy
+    }
+
+    class Key {
+        <<interface>>
+    }
+
+    class KeyImpl {
+        -int keyValue
+        +getKey(): int
+    }
+
+    class Value {
+        <<interface>>
+    }
+
+    class ValueImpl {
+        -String data
+        +getValue(): String
+    }
+
+    class NodeKey {
+        -String id
+        +getId(): String
+    }
+
+    class DistributionPolicy {
+        <<interface>>
+        +refreshNodes(List~NodeKey~): void
+        +getTargetNode(Key): NodeKey
+    }
+
+    class ModuloDistributionPolicy {
+        -volatile List~NodeKey~ nodeList
+        +refreshNodes(List~NodeKey~): void
+        +getTargetNode(Key): NodeKey
+    }
+
+    class EvictionPolicy {
+        <<interface>>
+        +keyAccessed(Key): void
+        +evictKey(): Key
+        +removeKey(Key): void
+        +addObserver(CacheStateObserver): void
+    }
+
+    class LRUEvictionPolicy {
+        -DoublyLinkedLRUTracker tracker
+        -List~CacheStateObserver~ listeners
+        -int maxSize
+        +keyAccessed(Key): void
+        +evictKey(): Key
+        +removeKey(Key): void
+        +addObserver(CacheStateObserver): void
+    }
+
+    class DoublyLinkedLRUTracker {
+        -Map~Key,LinkedNode~ lookup
+        -LinkedNode oldest
+        -LinkedNode newest
+        +getSize(): int
+        +getOldestKey(): Key
+        +recordAccess(Key): void
+        +delete(Key): void
+    }
+
+    class TTLPolicy {
+        <<interface>>
+        +isExpired(CacheValue): boolean
+        +initCleanup(Key, CacheNode): void
+    }
+
+    class ActiveTTLPolicy {
+        -ScheduledExecutorService scheduler
+        -long ttlDurationMs
+        +isExpired(CacheValue): boolean
+        +initCleanup(Key, CacheNode): void
+        +shutdown(): void
+    }
+
+    class PreFetchingPolicy {
+        <<interface>>
+        +recordAccess(Key): void
+        +getKeysToFetch(Key): List~Key~
+    }
+
+    class SimplePreFetchingPolicy {
+        -int prefetchRadius
+        +recordAccess(Key): void
+        +getKeysToFetch(Key): List~Key~
+    }
+
+    class CacheStateObserver {
+        <<interface>>
+        +onEviction(Key): void
+    }
+
+    %% Relationships
+    Cache --> LoadBalancer
+    Cache --> PreFetchingPolicy
+    Cache --> Database
+    Cache --> CacheNode
+
+    LoadBalancer --> DistributionPolicy
+    LoadBalancer --> CacheNode
+    LoadBalancer --> Redistributor
+
+    CacheNode --> EvictionPolicy
+    CacheNode --> TTLPolicy
+    CacheNode --> CacheValue
+    CacheNode --> CacheStateObserver
+
+    CacheValue --> Value
+    CacheValue --> Key
+
+    CacheFactory --> Cache
+    CacheFactory --> DistributionPolicy
+    CacheFactory --> PreFetchingPolicy
+
+    CacheNodeFactory --> CacheNode
+    CacheNodeFactory --> EvictionPolicy
+    CacheNodeFactory --> TTLPolicy
+
+    KeyImpl ..|> Key
+    ValueImpl ..|> Value
+
+    ModuloDistributionPolicy ..|> DistributionPolicy
+
+    LRUEvictionPolicy ..|> EvictionPolicy
+    LRUEvictionPolicy --> DoublyLinkedLRUTracker
+
+    ActiveTTLPolicy ..|> TTLPolicy
+
+    SimplePreFetchingPolicy ..|> PreFetchingPolicy
+
+    CacheNode ..|> CacheStateObserver
+```
 
 ---
 
-## Project Structure
+## Directory Organization
+
 ```
 src/main/java/com/cache/
-├── Main.java                              // Application entry point, bootstraps and runs demo
+├── Main.java                              // System bootstrap, initializes and executes demonstration
 ├── core/
-│   ├── Cache.java                         // Orchestrates cache operations (get, miss handling, prefetch trigger)
-│   ├── CacheNode.java                     // Individual cache shard (storage + eviction + TTL enforcement)
-│   ├── LoadBalancer.java                  // Key routing logic using distribution policy
-│   └── Redistributor.java                 // Data rebalancing when nodes are added/removed
+│   ├── Cache.java                         // Central coordinator for cache functionality (retrieval, persistence, data preparation)
+│   ├── CacheNode.java                     // Single cache partition with attached algorithms (storage + memory management + expiration)
+│   ├── LoadBalancer.java                  // Request distribution engine implementing routing algorithms
+│   └── Redistributor.java                 // Handles key relocation during topology changes
 ├── database/
-│   └── Database.java                      // Simulated backing store with artificial latency
+│   └── Database.java                      // Backing storage layer with configurable response delay
 ├── factory/
-│   ├── CacheFactory.java                  // Builds and configures Cache with selected strategies
-│   └── CacheNodeFactory.java              // Creates cache nodes with policies attached
+│   ├── CacheFactory.java                  // Configures and instantiates Cache with strategy selection
+│   └── CacheNodeFactory.java              // Generates cache partitions with integrated policies
 ├── model/
-│   ├── CacheValue.java                    // Wrapper for stored value with metadata (e.g., timestamps)
-│   ├── Key.java                           // Key abstraction interface
-│   ├── KeyImpl.java                       // Concrete key implementation
-│   ├── NodeKey.java                       // Composite key used for node-level identification
-│   ├── Value.java                         // Value abstraction interface
-│   └── ValueImpl.java                     // Concrete value implementation
+│   ├── CacheValue.java                    // Stored entry container with timestamp information
+│   ├── Key.java                           // Key interface specification
+│   ├── KeyImpl.java                       // Key concrete implementation
+│   ├── NodeKey.java                       // Node identification mechanism
+│   ├── Value.java                         // Value interface specification
+│   └── ValueImpl.java                     // Value concrete implementation
 ├── observer/
-│   └── CacheStateObserver.java            // Observer for monitoring cache events/state changes
+│   └── CacheStateObserver.java            // Event notification interface for state transitions
 └── strategy/
     ├── distribution/
-    │   ├── DistributionPolicy.java        // Interface for key-to-node mapping logic
-    │   └── ModuloDistributionPolicy.java  // Modulo-based sharding strategy
+    │   ├── DistributionPolicy.java        // Algorithm interface for key allocation
+    │   └── ModuloDistributionPolicy.java  // Hash-modulo based node assignment
     ├── eviction/
-    │   ├── EvictionPolicy.java            // Interface for cache eviction logic
-    │   └── LRUEvictionPolicy.java         // Least Recently Used eviction implementation
+    │   ├── EvictionPolicy.java            // Storage constraint enforcement interface
+    │   └── LRUEvictionPolicy.java         // Recency-based eviction implementation
     ├── prefetching/
-    │   ├── PreFetchingPolicy.java         // Interface for prefetching strategy
-    │   └── SimplePreFetchingPolicy.java   // Range-based key prediction and async prefetch
+    │   ├── PreFetchingPolicy.java         // Predictive loading interface
+    │   └── SimplePreFetchingPolicy.java   // Proximity-based prefetch strategy
     └── timetolive/
-        ├── ActiveTTLPolicy.java           // Actively removes expired entries
-        └── TTLPolicy.java                 // Interface for TTL/expiration logic
+        ├── ActiveTTLPolicy.java           // Time-based expiration with background cleanup
+        └── TTLPolicy.java                 // Lifetime management interface
 ```
 
 ---
 
-## 🛠️ Compilation & Execution
+## 🛠️ Build & Deployment
 
-### **1. Compile**
+### **1. Compilation**
+
 ```bash
 javac -d out --source-path src/main/java src/main/java/com/cache/Main.java
 ```
 
-### **2. Run**
+### **2. Execution**
+
 ```bash
 java -cp out com.cache.Main
 ```
 
-> **Note:**  
-> The `-d out` flag keeps compiled `.class` files separate from source code.
+> **Important:**  
+> The `-d out` parameter separates compiled bytecode from source files.
 
 ---
 
-## Features
-- Distributed key routing across multiple cache nodes
-- Configurable caching strategies via clean interfaces
-- TTL-based automatic expiration of entries
-- Asynchronous prefetching to improve cache hit rates
-- Dynamic redistribution of data during cluster changes
-- Simulated database latency to demonstrate cache effectiveness
+## Capabilities
+
+- Multi-node cache with intelligent request distribution
+- Strategy-based customization through standardized interfaces
+- Time-bound entry validity with scheduled removal
+- Eager data preparation to boost retrieval efficiency
+- Transparent key migration during cluster rescaling
+- Realistic I/O simulation showcasing distributed cache advantages
